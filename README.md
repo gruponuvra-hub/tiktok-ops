@@ -11,8 +11,11 @@ a mesma instalação atende várias agências e vários clientes.
 **Windows (terminal do VS Code):**
 
 ```powershell
-.\scripts\setup.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 ```
+
+Precisa de **Python 3.11 ou superior**. Se não tiver:
+`winget install -e --id Python.Python.3.12`, feche e reabra o terminal.
 
 **macOS / Linux:**
 
@@ -21,11 +24,8 @@ bash scripts/setup.sh
 ```
 
 O script encontra o Python, cria o ambiente virtual, instala tudo e roda os
-testes. Se o PowerShell recusar por política de execução:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
+testes. O `-ExecutionPolicy Bypass` vale só para aquela execução: o Windows
+bloqueia `.ps1` por padrão e isso não muda nada no sistema.
 
 > Uma observação que economiza tempo: o PowerShell 5.1, que é o padrão do
 > Windows, **não entende `&&`** entre comandos. Comandos encadeados com `&&`
