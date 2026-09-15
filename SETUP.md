@@ -5,39 +5,40 @@ burocrática tem fila e é o que determina o prazo: comece por ela.
 
 ---
 
-## Passo 0 — Decidir o modelo de operação
+## Passo 0 — O modelo de operação
 
-Há duas formas de usar este projeto, e elas exigem coisas diferentes. Decida antes
-de começar.
+**Cada instalação é autônoma.** Quem usa este projeto roda a própria cópia, no
+próprio VS Code, com as próprias credenciais. Não há servidor central, painel
+web nem serviço hospedado — tudo acontece no terminal, conduzido pelo Claude
+Code.
 
-### Modelo A — um app, várias operações *(recomendado para agências)*
+Isso tem uma consequência que precisa estar clara antes de começar, porque as
+duas metades do projeto têm exigências bem diferentes:
 
-Você mantém **um** app de desenvolvedor aprovado. Cada agência ou cliente apenas
-**autoriza a conta dele** ao seu app, por um link. Quem é atendido não precisa de
-registro de desenvolvedor, domínio próprio nem site.
+| | **Campanhas (mídia paga)** | **Publicação no perfil (orgânico)** |
+|---|---|---|
+| O que usa | MCP oficial da TikTok, já no `.mcp.json` | API própria, com app de desenvolvedor |
+| Precisa de app de desenvolvedor? | **não** | **sim** |
+| Precisa de CNPJ, domínio e site? | **não** | **sim** |
+| Quando funciona | **assim que você clonar** | 1–2 semanas após submeter |
 
-- Você faz o cadastro **uma vez**
-- Cada atendido vira uma operação: `tiktok-ops init <nome>`
-- É o modelo "Technology Company" da TikTok, e é para isso que ele existe
+Ou seja: clonar o repositório e rodar o `setup.ps1` já te dá a operação de
+campanhas completa, hoje. A publicação no perfil exige que **você** faça o
+cadastro de desenvolvedor descrito no Passo 1 — ele é por empresa, não é
+transferível, e não dá para usar o de outra pessoa.
+
+Se você atende vários clientes, cada um vira uma **operação** dentro da sua
+instalação, com arquivo de configuração e tokens próprios:
 
 ```bash
-tiktok-ops init agencia-zebra
-tiktok-ops --tenant agencia-zebra bc list
+tiktok-ops init cliente-a
+tiktok-ops init cliente-b
+tiktok-ops --tenant cliente-a bc advertisers
 ```
 
-### Modelo B — o cliente hospeda a própria cópia
-
-Você entrega o repositório; o cliente roda com as credenciais dele.
-
-- **Para a metade de campanhas, funciona imediatamente**: o `.mcp.json` já está
-  no repositório e o servidor MCP oficial não exige app de desenvolvedor. O
-  cliente clona, roda `/mcp`, autentica com a conta TikTok for Business dele e
-  já opera.
-- **Para a metade orgânica**, o cliente precisa do próprio cadastro completo:
-  CNPJ, domínio, e-mail no domínio, site institucional, aprovação da TikTok.
-
-Se a dúvida for "qual dos dois", é quase sempre o **A** para orgânico e o **B**
-para campanhas.
+Um único cadastro de desenvolvedor seu atende todos eles — os clientes só
+autorizam as contas deles ao seu app, por um link, sem precisar de cadastro
+próprio.
 
 ---
 ## Passo 1 — Pré-requisitos de cadastro (começa a fila aqui)

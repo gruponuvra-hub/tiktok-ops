@@ -20,7 +20,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .ads import BusinessCenter, CampaignSpec, Campaigns, Reports
+from . import fluxos
+from .ads import AdGroupSpec, BusinessCenter, CampaignSpec, Campaigns, Identities, Reports
+from .bridge import SparkBridge
+from .bridge.spark import CriterioPromocao
 from .auth import AccountsAuth, MarketingAuth
 from .config import TIKTOK_ADS_MCP_URL, TIKTOK_TEST_VIDEO_URL, get_settings
 from .errors import ConfigError, MediaError, TikTokError
@@ -36,9 +39,12 @@ bc_app = typer.Typer(help="Business Center — carteira de contas da agência")
 organic_app = typer.Typer(help="Publicação no perfil")
 ads_app = typer.Typer(help="Campanhas e relatórios")
 media_app = typer.Typer(help="Pipeline de mídia (Drive → R2)")
+bridge_app = typer.Typer(help="Ponte orgânico → pago")
+fluxo_app = typer.Typer(help="Fluxos completos, de ponta a ponta")
 for sub, nome in (
     (auth_app, "auth"), (bc_app, "bc"), (organic_app, "organic"),
     (ads_app, "ads"), (media_app, "media"),
+    (bridge_app, "bridge"), (fluxo_app, "fluxo"),
 ):
     app.add_typer(sub, name=nome)
 
@@ -364,6 +370,183 @@ def media_prepare(nome: str = typer.Argument(..., help="nome do arquivo no Drive
 
     url, info = pipeline.preparar(alvo)
     _mostrar({"url": url, "info": info.__dict__ if info else None})
+
+
+# ------------------------------------------------------- ads: grupo e anúncio
+
+@ads_app.command("adgroup")
+def ads_adgroup(
+    campaign_id: str = typer.Argument(..., help="campanha onde o grupo entra"),
+    nome: str = typer.Argument(...),
+    orcamento: float = typer.Option(..., "--orcamento", help="diário; piso de 20"),
+    advertiser: Optional[str] = typer.Option(None, "--advertiser", "-a"),
+    objetivo_otimizacao: str = typer.Option("CLICK", "--otimizacao"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+):
+    """Cria um ad group. É aqui que o orçamento é controlado."""
+    spec = AdGroupSpec(
+        campaign_id=campaign_id,
+        adgroup_name=nome,
+        budget=orcamento,
+        optimization_goal=objetivo_otimizacao,
+    )
+    _mostrar(_campaigns(advertiser).create_adgroup(spec, dry_run=dry_run))
+
+
+@ads_app.command("spark")
+def ads_spark(
+    adgroup_id: str = typer.Argument(...),
+    item_id: str = typer.Argument(..., help="id do post que vira anúncio"),
+    nome: str = typer.Option("Spark Ad", "--nome"),
+    advertiser: Optional[str] = typer.Option(None, "--advertiser", "-a"),
+    identidade: Optional[str] = typer.Option(None, "--identidade", help="id ou nome"),
+    link: Optional[str] = typer.Option(None, "--link", help="landing page"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+):
+    """Cria um Spark Ad a partir de um post que já está no perfil."""
+    campanhas = _campaigns(advertiser)
+    ident = Identities(campanhas.client, campanhas.advertiser_id).resolver(identidade)
+    _mostrar(
+        campanhas.create_spark_ad(
+            adgroup_id, nome, ident.identity_id, item_id,
+            landing_page_url=link, dry_run=dry_run,
+        )
+    )
+
+
+@ads_app.command("identidades")
+def ads_identidades(advertiser: Optional[str] = typer.Option(None, "--advertiser", "-a")):
+    """Lista as identidades que podem gerar Spark Ads nesta conta."""
+    campanhas = _campaigns(advertiser)
+    tabela = Table("identity_id", "tipo", "nome")
+    for i in Identities(campanhas.client, campanhas.advertiser_id).list():
+        tabela.add_row(i.identity_id, i.identity_type, i.display_name)
+    console.print(tabela)
+
+
+# ------------------------------------------------------------------- bridge
+
+def _bridge() -> SparkBridge:
+    s = _cfg()
+    auth = AccountsAuth(s)
+    return SparkBridge(TikTokClient(auth.access_token()), auth.business_id())
+
+
+@bridge_app.command("candidatos")
+def bridge_candidatos(
+    min_views: int = typer.Option(0, "--min-views"),
+    min_engajamento: float = typer.Option(0.0, "--min-engajamento", help="ex.: 0.05 = 5%"),
+    min_horas: int = typer.Option(24, "--min-horas"),
+):
+    """Posts do perfil que cruzaram o limiar e merecem virar anúncio."""
+    criterio = CriterioPromocao(
+        min_views=min_views, min_engagement_rate=min_engajamento, min_idade_horas=min_horas
+    )
+    dados = _bridge().listar_posts()
+    tabela = Table("item_id", "views", "veredito")
+    for post in dados.get("videos", dados.get("list", [])):
+        aprovado, motivo = criterio.aprova(post, float(post.get("idade_horas", min_horas)))
+        tabela.add_row(
+            str(post.get("item_id", "")),
+            str(post.get("video_views", "")),
+            ("sim" if aprovado else motivo),
+        )
+    console.print(tabela)
+
+
+@bridge_app.command("autorizar")
+def bridge_autorizar(
+    item_id: str = typer.Argument(...),
+    dias: int = typer.Option(30, "--dias"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+):
+    """Autoriza um post próprio a ser usado em anúncio."""
+    _mostrar(_bridge().autorizar_para_anuncio(item_id, dias=dias, dry_run=dry_run))
+
+
+# -------------------------------------------------------------------- fluxos
+
+def _drive_e_pipeline():
+    from .media import DriveSource, MediaPipeline, R2Storage
+
+    s = _cfg()
+    s.require("google_drive_folder_id", "r2_account_id", "r2_bucket", "r2_public_base_url")
+    drive = DriveSource(s.google_service_account_file, s.google_drive_folder_id)
+    storage = R2Storage(
+        s.r2_account_id, s.r2_access_key_id, s.r2_secret_access_key,
+        s.r2_bucket, s.r2_public_base_url,
+    )
+    return drive, MediaPipeline(drive, storage, Path(s.data_dir) / "media")
+
+
+def _resultado_em_dict(obj) -> object:
+    if hasattr(obj, "__slots__"):
+        return {f: _resultado_em_dict(getattr(obj, f)) for f in obj.__slots__}
+    if isinstance(obj, dict):
+        return {k: _resultado_em_dict(v) for k, v in obj.items()}
+    return obj
+
+
+@fluxo_app.command("publicar")
+def fluxo_publicar(
+    arquivo: str = typer.Argument(..., help="nome do arquivo na pasta do Drive"),
+    caption: str = typer.Option("", "--caption", "-c"),
+    impulsionar: bool = typer.Option(False, "--impulsionar", help="sobe campanha em cima do post"),
+    campanha: str = typer.Option("", "--campanha", help="nome da campanha, se impulsionar"),
+    orcamento: float = typer.Option(20.0, "--orcamento", help="diário do ad group"),
+    advertiser: Optional[str] = typer.Option(None, "--advertiser", "-a"),
+    identidade: Optional[str] = typer.Option(None, "--identidade"),
+    link: Optional[str] = typer.Option(None, "--link"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+):
+    """Drive → R2 → perfil. Com --impulsionar, sobe a campanha em seguida."""
+    drive, pipeline = _drive_e_pipeline()
+    publisher = _publisher()
+    opcoes = PostOptions(caption=caption)
+
+    if not impulsionar:
+        _mostrar(_resultado_em_dict(
+            fluxos.publicar(
+                drive=drive, pipeline=pipeline, publisher=publisher,
+                nome_arquivo=arquivo, opcoes=opcoes, dry_run=dry_run,
+            )
+        ))
+        return
+
+    campanhas = _campaigns(advertiser)
+    resultado = fluxos.publicar_e_impulsionar(
+        drive=drive, pipeline=pipeline, publisher=publisher,
+        bridge=_bridge(), campaigns=campanhas,
+        identities=Identities(campanhas.client, campanhas.advertiser_id),
+        nome_arquivo=arquivo, opcoes=opcoes,
+        nome_campanha=campanha or f"Tráfego — {arquivo}",
+        orcamento_diario=orcamento, identidade=identidade,
+        landing_page_url=link, dry_run=dry_run,
+    )
+    _mostrar(_resultado_em_dict(resultado))
+
+
+@fluxo_app.command("impulsionar")
+def fluxo_impulsionar(
+    item_id: str = typer.Argument(..., help="id do post já publicado no perfil"),
+    campanha: str = typer.Option(..., "--campanha", help="nome da campanha"),
+    orcamento: float = typer.Option(20.0, "--orcamento"),
+    advertiser: Optional[str] = typer.Option(None, "--advertiser", "-a"),
+    identidade: Optional[str] = typer.Option(None, "--identidade"),
+    campaign_id: Optional[str] = typer.Option(None, "--campaign-id", help="usa campanha existente"),
+    link: Optional[str] = typer.Option(None, "--link"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run"),
+):
+    """Post do perfil → autorização → campanha → Spark Ad."""
+    campanhas = _campaigns(advertiser)
+    resultado = fluxos.impulsionar(
+        bridge=_bridge(), campaigns=campanhas,
+        identities=Identities(campanhas.client, campanhas.advertiser_id),
+        item_id=item_id, nome_campanha=campanha, orcamento_diario=orcamento,
+        identidade=identidade, campaign_id=campaign_id, landing_page_url=link,
+        dry_run=dry_run,
+    )
+    _mostrar(_resultado_em_dict(resultado))
 
 
 def run() -> None:

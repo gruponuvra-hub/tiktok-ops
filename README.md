@@ -139,6 +139,27 @@ tiktok-ops organic verify-domain media.seudominio.com.br
 tiktok-ops organic verify-domain media.seudominio.com.br --checar <property_id>
 ```
 
+### Fluxos de ponta a ponta
+
+O caminho completo em um comando — Drive, validação, R2, publicação,
+acompanhamento, autorização do post e campanha:
+
+```bash
+tiktok-ops fluxo publicar "campanha-outubro.mp4" \
+    --caption "texto do post" \
+    --impulsionar --campanha "Outubro — Tráfego" --orcamento 50
+
+# só impulsionar um post que já está no perfil
+tiktok-ops fluxo impulsionar <item_id> --campanha "Outubro" --orcamento 50
+
+# o que vale a pena impulsionar
+tiktok-ops bridge candidatos --min-views 1000 --min-engajamento 0.05
+```
+
+Como todo comando de escrita, esses começam em dry-run: mostram o encadeamento
+inteiro e não executam nada até você passar `--no-dry-run`.
+
+
 `tiktok-ops auth status` mostra, a qualquer momento, o que já está no lugar e o
 que falta.
 
@@ -162,6 +183,7 @@ src/tiktok_ops/
 ├── organic/         pré-voo → publicação → status; verificação de domínio
 ├── media/           Drive → disco → R2, com validação por ffprobe
 ├── bridge/          critérios para promover post orgânico a anúncio
+├── fluxos.py        encadeamentos de ponta a ponta
 └── cli.py           interface de linha de comando
 ```
 
@@ -185,7 +207,7 @@ Cada uma quebra em produção de forma silenciosa. Todas têm teste.
 | Bytes de mídia nunca passam pelo contexto do agente nem por MCP | `media/drive.py` |
 
 ```bash
-pytest      # 33 testes, nenhum precisa de credencial
+pytest      # 49 testes, nenhum precisa de credencial
 ```
 
 ---

@@ -70,6 +70,67 @@ Não são sugestões. Cada uma existe porque quebra em produção de forma silen
 
 ---
 
+## Fluxos de trabalho (instruções para o agente)
+
+Tudo é operado por você, Claude Code, no terminal do VS Code. Não há servidor
+nem painel: os comandos abaixo são a interface.
+
+### "publica esse vídeo e sobe uma campanha em cima"
+
+```
+tiktok-ops fluxo publicar "<arquivo no Drive>" --caption "<texto>" \
+    --impulsionar --campanha "<nome>" --orcamento <valor>
+```
+
+Encadeia: Drive → validação local → R2 → pré-voo da conta → publicação →
+acompanhamento do status → autorização do post para anúncio → campanha → ad
+group → Spark Ad.
+
+### "publica só, sem campanha"
+
+```
+tiktok-ops fluxo publicar "<arquivo>" --caption "<texto>"
+```
+
+### "impulsiona um post que já está no perfil"
+
+```
+tiktok-ops fluxo impulsionar <item_id> --campanha "<nome>" --orcamento <valor>
+```
+
+### "o que vale a pena impulsionar?"
+
+```
+tiktok-ops bridge candidatos --min-views 1000 --min-engajamento 0.05
+```
+
+---
+
+## Regras de condução — valem sempre
+
+1. **Rode primeiro em dry-run.** Todo comando de escrita já começa assim. Mostre
+   o resumo do que seria feito e **só rode com `--no-dry-run` depois que a pessoa
+   confirmar nesta conversa**. Confirmação anterior não vale para uma operação
+   nova.
+
+2. **Nunca escolha a conta de anúncio sozinho.** Se `--advertiser` for ambíguo o
+   comando falha e lista as opções — repasse a lista e pergunte. Não chute.
+
+3. **Nunca escolha a identidade sozinho** quando houver mais de uma. Mesma razão:
+   anunciar pela conta errada de um cliente é um erro caro e silencioso.
+
+4. **Antes de publicar, consulte o pré-voo.** O fluxo já faz isso, mas se estiver
+   montando os passos na mão, `tiktok-ops organic settings` vem antes.
+
+5. **Se a publicação terminar em `FAILED`, pare.** Não tente impulsionar nem
+   republicar sem antes mostrar o `fail_reason` à pessoa.
+
+6. **Orçamento é assunto da pessoa.** Não sugira aumentar gasto por iniciativa
+   própria, e nunca ultrapasse o valor que ela disse.
+
+7. **Ao trocar de operação, confira.** `tiktok-ops --tenant <nome> auth status`
+   antes de qualquer escrita, para não agir na conta do cliente errado.
+
 ## Limites operacionais
 
 | Limite | Valor |
